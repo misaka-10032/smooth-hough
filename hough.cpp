@@ -39,8 +39,7 @@ int main(int argc, char** argv) {
 
   // Set up baisis
   tic = CycleTimer::currentSeconds();
-  //HoughBasis<float> hb(prob.rows, prob.cols);
-  HoughBasis<float> hb(prob.rows, prob.cols, 180, 240);
+  HoughBasis<float> hb(prob.rows, prob.cols);
   toc = CycleTimer::currentSeconds();
   cout << "hough basis takes " << toc-tic << " seconds" << endl;
 

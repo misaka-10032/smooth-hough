@@ -19,6 +19,8 @@ template void caffe_set<int>(const int n, const int a, int* y);
 template void caffe_set<float>(const int n, const float a, float* y);
 template void caffe_set<double>(const int n, const double a, double* y);
 
+void caffe_gpu_memcpy(const size_t N, const void *X, void *Y);
+
 template <typename Dtype>
 void caffe_axpy(const int n, const Dtype a, const Dtype* x, Dtype* y);
 

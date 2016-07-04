@@ -1,6 +1,8 @@
 .*
 !.gitignore
 *.ppm
+!prob-small.ppm
+!prob.ppm
 !-ref.ppm
 
-hough
+build

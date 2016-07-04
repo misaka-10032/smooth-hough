@@ -4,8 +4,9 @@
 #include <vector>
 #include <cmath>
 #include "math_functions.hpp"
+#include "common.hpp"
+#include "syncedmem.hpp"
 
-using std::vector;
 
 template<typename Dtype>
 class HoughBasis {
@@ -22,41 +23,46 @@ public:
     this->THETA_ = THETA;
     this->RHO_ = RHO;
 
-    v_.resize(H*W*THETA);
-    ci_.resize(H*W*THETA);
-    ro_.resize(1+H*W);
+    v_.reset(new SyncedMemory(sizeof(Dtype) * H*W*THETA));
+    ci_.reset(new SyncedMemory(sizeof(int) * H*W*THETA));
+    ro_.reset(new SyncedMemory(sizeof(int) * (1+H*W)));
 
     Dtype theta_step = Dtype(theta_max_-theta_min_) / THETA;
     Dtype rho_step = Dtype(rho_max_-rho_min_) / RHO;
 
     const Dtype pi = std::acos(-1);
-    Dtype theta_[THETA];
+    SyncedMemory theta_(sizeof(Dtype) * THETA);
     for (int theta_i = 0; theta_i < THETA; theta_i++) {
       Dtype theta = theta_min_ + theta_i * theta_step;
-      theta_[theta_i] = theta * pi / 180;
+      ((Dtype*) theta_.mutable_cpu_data())[theta_i] = theta * pi / 180;
     }
-    Dtype sin_[THETA], cos_[THETA];
-    caffe_sincos(THETA, (Dtype*) theta_, (Dtype*) sin_, (Dtype*) cos_);
+    SyncedMemory sin_(sizeof(Dtype) * THETA);
+    SyncedMemory cos_(sizeof(Dtype) * THETA);
+    caffe_sincos(THETA, (const Dtype*) theta_.cpu_data(),
+                 (Dtype*) sin_.mutable_cpu_data(),
+                 (Dtype*) cos_.mutable_cpu_data());
 
-    ro_[0] = 0;
-    // TODO: parallel for
-    for (int hw = 0; hw < H*W; hw++) {
+    // TODO: parallel for; flat for
+    for (int idx = 0; idx < H*W*THETA; idx++) {
+      const int hw = idx / THETA;
+      const int theta_i = idx % THETA;
       const int h = hw / W;
       const int w = hw % W;
-      const int ro = hw * THETA;  // row offset
+      const int ro = hw * THETA;
 
-      Dtype rho_[THETA];
-      caffe_set(THETA, Dtype(0), (Dtype*) rho_);
-      caffe_axpy(THETA, Dtype(h), sin_, rho_);
-      caffe_axpy(THETA, Dtype(w), cos_, rho_);
-      for (int theta_i = 0; theta_i < THETA; theta_i++) {
-        int rho_i = int((rho_[theta_i]-rho_min_)/rho_step);
-        int ci = theta_i * RHO + rho_i;  // col idx
-        v_[ro+theta_i] = Dtype(1);
-        ci_[ro+theta_i] = ci;
+      Dtype rho = h * ((Dtype*) sin_.cpu_data())[theta_i] +
+                  w * ((Dtype*) cos_.cpu_data())[theta_i];
+      int rho_i = int( (rho-rho_min_)/rho_step );
+      int ci = theta_i * RHO + rho_i;  // col idx
+      val_mutable_cpu_data()[ro+theta_i] = Dtype(1);
+      ci_mutable_cpu_data()[ro+theta_i] = ci;
+
+      if (theta_i == 0) {
+        ro_mutable_cpu_data()[hw] = ro;
+        if (idx == H*W*THETA-1) {
+          ro_mutable_cpu_data()[hw+1] = ro + THETA;
+        }
       }
-
-      ro_[hw+1] = ro;
     }
   }
 
@@ -64,15 +70,32 @@ public:
   inline int W() { return W_; }
   inline int RHO() { return RHO_; }
   inline int THETA() { return THETA_; }
-  inline Dtype* val() { return v_.data(); }
-  inline int* ci() { return ci_.data(); }
-  inline int* ro() { return ro_.data(); }
-  inline int* pb() { return ro_.data(); }
-  inline int* pe() { return ro_.data()+1; }
+  inline const Dtype* val_cpu_data() { return (const Dtype*) v_->cpu_data(); }
+  inline const int* ci_cpu_data() { return (const int*) ci_->cpu_data(); }
+  inline const int* ro_cpu_data() { return (const int*) ro_->cpu_data(); }
+  inline const int* pb_cpu_data() { return (const int*) ro_->cpu_data(); }
+  inline const int* pe_cpu_data() { return (const int*) ro_->cpu_data()+1; }
+  inline const Dtype* val_gpu_data() { return (const Dtype*) v_->gpu_data(); }
+  inline const int* ci_gpu_data() { return (const int*) ci_->gpu_data(); }
+  inline const int* ro_gpu_data() { return (const int*) ro_->gpu_data(); }
+  inline const int* pb_gpu_data() { return (const int*) ro_->gpu_data(); }
+  inline const int* pe_gpu_data() { return (const int*) ro_->gpu_data()+1; }
   inline int theta_min() { return theta_min_; }
   inline int theta_max() { return theta_max_; }
   inline int rho_min() { return rho_min_; }
   inline int rho_max() { return rho_max_; }
+
+protected:
+  inline Dtype* val_mutable_cpu_data() { return (Dtype*) v_->mutable_cpu_data(); }
+  inline int* ci_mutable_cpu_data() { return (int*) ci_->mutable_cpu_data(); }
+  inline int* ro_mutable_cpu_data() { return (int*) ro_->mutable_cpu_data(); }
+  inline int* pb_mutable_cpu_data() { return (int*) ro_->mutable_cpu_data(); }
+  inline int* pe_mutable_cpu_data() { return (int*) ro_->mutable_cpu_data()+1; }
+  inline Dtype* val_mutable_gpu_data() { return (Dtype*) v_->mutable_gpu_data(); }
+  inline int* ci_mutable_gpu_data() { return (int*) ci_->mutable_gpu_data(); }
+  inline int* ro_mutable_gpu_data() { return (int*) ro_->mutable_gpu_data(); }
+  inline int* pb_mutable_gpu_data() { return (int*) ro_->mutable_gpu_data(); }
+  inline int* pe_mutable_gpu_data() { return (int*) ro_->mutable_gpu_data()+1; }
 
 private:
   int H_;            // range of height in spatial domain
@@ -84,9 +107,9 @@ private:
   int rho_min_;      // min of rho
   int rho_max_;      // max of rho
 
-  vector<Dtype> v_;  // values
-  vector<int> ci_;   // column indices
-  vector<int> ro_;   // row offsets
+  shared_ptr<SyncedMemory> v_;   // values, array of Dtype
+  shared_ptr<SyncedMemory> ci_;  // column indices, array of int
+  shared_ptr<SyncedMemory> ro_;  // row offsets, array of int
 };
 
 #endif

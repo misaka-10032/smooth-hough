@@ -1,0 +1,6 @@
+.*
+!.gitignore
+*.ppm
+!-ref.ppm
+
+hough

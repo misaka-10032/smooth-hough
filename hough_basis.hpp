@@ -23,44 +23,53 @@ public:
     this->THETA_ = THETA;
     this->RHO_ = RHO;
 
+    theta_step_ = Dtype(theta_max_-theta_min_) / THETA;
+    rho_step_ = Dtype(rho_max_-rho_min_) / RHO;
+
     v_.reset(new SyncedMemory(sizeof(Dtype) * H*W*THETA));
     ci_.reset(new SyncedMemory(sizeof(int) * H*W*THETA));
     ro_.reset(new SyncedMemory(sizeof(int) * (1+H*W)));
 
-    Dtype theta_step = Dtype(theta_max_-theta_min_) / THETA;
-    Dtype rho_step = Dtype(rho_max_-rho_min_) / RHO;
+    if (Caffe::mode() == Caffe::CPU)
+      Init_cpu();
+    else
+      Init_gpu();
+  }
 
+  void Init_gpu();
+
+  void Init_cpu() {
     const Dtype pi = std::acos(-1);
-    SyncedMemory theta_(sizeof(Dtype) * THETA);
-    for (int theta_i = 0; theta_i < THETA; theta_i++) {
-      Dtype theta = theta_min_ + theta_i * theta_step;
+    SyncedMemory theta_(sizeof(Dtype) * THETA_);
+    for (int theta_i = 0; theta_i < THETA_; theta_i++) {
+      Dtype theta = theta_min_ + theta_i * theta_step_;
       ((Dtype*) theta_.mutable_cpu_data())[theta_i] = theta * pi / 180;
     }
-    SyncedMemory sin_(sizeof(Dtype) * THETA);
-    SyncedMemory cos_(sizeof(Dtype) * THETA);
-    caffe_sincos(THETA, (const Dtype*) theta_.cpu_data(),
+    SyncedMemory sin_(sizeof(Dtype) * THETA_);
+    SyncedMemory cos_(sizeof(Dtype) * THETA_);
+    caffe_sincos(THETA_, (const Dtype*) theta_.cpu_data(),
                  (Dtype*) sin_.mutable_cpu_data(),
                  (Dtype*) cos_.mutable_cpu_data());
 
-    // TODO: parallel for; flat for
-    for (int idx = 0; idx < H*W*THETA; idx++) {
-      const int hw = idx / THETA;
-      const int theta_i = idx % THETA;
-      const int h = hw / W;
-      const int w = hw % W;
-      const int ro = hw * THETA;
+    // TODO: parallel for
+    for (int idx = 0; idx < H_*W_*THETA_; idx++) {
+      const int hw = idx / THETA_;
+      const int theta_i = idx % THETA_;
+      const int h = hw / W_;
+      const int w = hw % W_;
+      const int ro = hw * THETA_;
 
       Dtype rho = h * ((Dtype*) sin_.cpu_data())[theta_i] +
                   w * ((Dtype*) cos_.cpu_data())[theta_i];
-      int rho_i = int( (rho-rho_min_)/rho_step );
-      int ci = theta_i * RHO + rho_i;  // col idx
+      int rho_i = int( (rho-rho_min_)/rho_step_ );
+      int ci = theta_i * RHO_ + rho_i;  // col idx
       val_mutable_cpu_data()[ro+theta_i] = Dtype(1);
       ci_mutable_cpu_data()[ro+theta_i] = ci;
 
       if (theta_i == 0) {
         ro_mutable_cpu_data()[hw] = ro;
-        if (idx == H*W*THETA-1) {
-          ro_mutable_cpu_data()[hw+1] = ro + THETA;
+        if (idx == H_*W_*THETA_-1) {
+          ro_mutable_cpu_data()[hw+1] = ro + THETA_;
         }
       }
     }
@@ -84,6 +93,7 @@ public:
   inline int theta_max() { return theta_max_; }
   inline int rho_min() { return rho_min_; }
   inline int rho_max() { return rho_max_; }
+  inline int nnz() { return H_*W_*THETA_; }
 
 protected:
   inline Dtype* val_mutable_cpu_data() { return (Dtype*) v_->mutable_cpu_data(); }
@@ -104,8 +114,10 @@ private:
   int THETA_;        // range of theta in Hough domain
   int theta_min_;    // min of theta
   int theta_max_;    // max of theta
+  int theta_step_;   // step of theta
   int rho_min_;      // min of rho
   int rho_max_;      // max of rho
+  int rho_step_;     // step of rho
 
   shared_ptr<SyncedMemory> v_;   // values, array of Dtype
   shared_ptr<SyncedMemory> ci_;  // column indices, array of int

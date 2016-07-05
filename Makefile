@@ -1,6 +1,7 @@
 CXX := g++
 CXXFLAGS :=
-CXXFLAGS += -g
+#CXXFLAGS += -g
+CXXFLAGS += -O0
 LDFLAGS  :=
 LDLIBS   :=
 # opencv
@@ -16,7 +17,7 @@ LDLIBS   += -lboost_thread -lboost_system
 # cuda
 CXXFLAGS += -I/usr/local/cuda/include
 LDFLAGS  += -L/usr/local/cuda/lib64
-LDLIBS   += -lcudart
+LDLIBS   += -lcudart -lcusparse -lcublas
 # glog
 CXXFLAGS += -I/home/longqic/local/opt/glog-0.3.3/install/include
 LDFLAGS  += -L/home/longqic/local/opt/glog-0.3.3/install/lib
@@ -25,7 +26,7 @@ LDLIBS   += -lglog
 # nvcc
 NVCC      := nvcc
 NVCCFLAGS :=
-NVCCFLAGS += -G
+#NVCCFLAGS += -G
 NVCCFLAGS += -gencode arch=compute_20,code=sm_20 \
              -gencode arch=compute_20,code=sm_21 \
              -gencode arch=compute_30,code=sm_30 \
@@ -49,7 +50,7 @@ OBJS  += $(patsubst %.cu,$(BUILD)/%.cu.o,$(CU_SRCS))
 # rules #
 #########
 
-.PHONY: pre clean
+.PHONY: pre test* clean
 
 all: hough
 
@@ -68,6 +69,25 @@ $(BUILD)/%.cu.o: %.cu
 
 hough: pre $(OBJS)
 	$(CXX) $(CXXFLAGS) -o $(BUILD)/$@ $(OBJS) $(LDFLAGS) $(LDLIBS)
+
+test: test-cpu test-gpu
+
+test-cpu: all
+	@echo
+	@echo '******** Testing CPU ********'
+	@echo
+	build/hough cpu prob-small.ppm tgt-small.ppm hf_prob-small.ppm hf_tgt-small.ppm grad-small.ppm
+	@echo
+	build/hough cpu prob.ppm tgt.ppm hf_prob.ppm hf_tgt.ppm grad.ppm
+
+test-gpu: all
+	@echo
+	@echo '******** Testing GPU ********'
+	@echo
+	build/hough gpu prob-small.ppm tgt-small.ppm hf_prob-small.ppm hf_tgt-small.ppm grad-small.ppm
+	@echo
+	build/hough gpu prob.ppm tgt.ppm hf_prob.ppm hf_tgt.ppm grad.ppm
+	@echo
 
 clean:
 	rm -rf $(BUILD)

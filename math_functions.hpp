@@ -28,8 +28,16 @@ template <typename Dtype>
 void caffe_sincos(const int n, const Dtype* a, Dtype* y, Dtype* z);
 
 template <typename Dtype>
+void caffe_gpu_sincos(const int n, const Dtype* a, Dtype* y, Dtype* z);
+
+template <typename Dtype>
 void caffe_csrmv(const CBLAS_TRANSPOSE transa, const int m, const int k,
                  const Dtype alpha, const Dtype* val, const int* ro,
                  const int* ci, const Dtype* x, const Dtype beta, Dtype* y);
+
+template <typename Dtype>
+void caffe_gpu_csrmv(const CBLAS_TRANSPOSE transa, const int m, const int n,
+                     const int nnz, const Dtype alpha, const Dtype* val, const int* ro,
+                     const int* ci, const Dtype* x, const Dtype beta, Dtype* y);
 
 #endif
